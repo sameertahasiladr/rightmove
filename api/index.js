@@ -1,6 +1,5 @@
 const https = require('https');
 
-// --- PASTE YOUR DATA BELOW ---
 const myCert = `-----BEGIN CERTIFICATE-----
 MIIExDCCA6ygAwIBAgICAtEwDQYJKoZIhvcNAQELBQAwgaMxCzAJBgNVBAYTAkdC
 MQ8wDQYDVQQIDAZMb25kb24xDTALBgNVBAcMBFNvaG8xEjAQBgNVBAoMCVJpZ2h0
@@ -62,7 +61,6 @@ b0pnchIn5epMV+nWS5t0DGz3yJAKJvtlryPhNTGjCRGd
 -----END ENCRYPTED PRIVATE KEY-----`;
 
 const myPass = 'k8RyJDOCUN';
-// --- END PASTE ---
 
 export default async function handler(req, res) {
     if (req.method !== 'POST') {
