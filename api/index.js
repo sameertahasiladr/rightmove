@@ -1,5 +1,6 @@
 const https = require('https');
 
+// --- YOUR AUTHENTICATION DATA ---
 const myCert = `-----BEGIN CERTIFICATE-----
 MIIExDCCA6ygAwIBAgICAtEwDQYJKoZIhvcNAQELBQAwgaMxCzAJBgNVBAYTAkdC
 MQ8wDQYDVQQIDAZMb25kb24xDTALBgNVBAcMBFNvaG8xEjAQBgNVBAoMCVJpZ2h0
@@ -67,9 +68,15 @@ export default async function handler(req, res) {
         return res.status(405).json({ error: 'Use POST' });
     }
 
+    // Logic to switch between endpoints
+    let path = '/v1/property/sendpropertydetails'; // Default
+    if (req.body.action === 'get_list') {
+        path = '/v1/property/getbranchpropertylist';
+    }
+
     const options = {
         hostname: 'adfapi.adftest.rightmove.com',
-        path: '/v1/property/sendpropertydetails',
+        path: path,
         method: 'POST',
         cert: myCert,
         key: myKey,
@@ -80,13 +87,26 @@ export default async function handler(req, res) {
     const remoteRequest = https.request(options, (remoteRes) => {
         let body = '';
         remoteRes.on('data', (chunk) => body += chunk);
-        remoteRes.on('end', () => res.status(remoteRes.statusCode).send(body));
+        remoteRes.on('end', () => {
+            try {
+                // If it's JSON, parse it for the response, otherwise send raw
+                const jsonResponse = JSON.parse(body);
+                res.status(remoteRes.statusCode).json(jsonResponse);
+            } catch (e) {
+                res.status(remoteRes.statusCode).send(body);
+            }
+        });
     });
 
     remoteRequest.on('error', (err) => {
         res.status(500).json({ error: 'Handshake Error', details: err.message });
     });
 
-    remoteRequest.write(JSON.stringify(req.body));
+    // Create a copy of the body and remove our custom "action" field 
+    // before sending to Rightmove's servers.
+    const cleanBody = { ...req.body };
+    delete cleanBody.action;
+
+    remoteRequest.write(JSON.stringify(cleanBody));
     remoteRequest.end();
 }
