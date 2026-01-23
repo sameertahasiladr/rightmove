@@ -1,6 +1,6 @@
-import https from 'https';
+const https = require('https');
 
-// --- AUTHENTICATION DATA ---
+// --- YOUR AUTHENTICATION DATA ---
 const myCert = `-----BEGIN CERTIFICATE-----
 MIIExDCCA6ygAwIBAgICAtEwDQYJKoZIhvcNAQELBQAwgaMxCzAJBgNVBAYTAkdC
 MQ8wDQYDVQQIDAZMb25kb24xDTALBgNVBAcMBFNvaG8xEjAQBgNVBAoMCVJpZ2h0
@@ -64,65 +64,49 @@ b0pnchIn5epMV+nWS5t0DGz3yJAKJvtlryPhNTGjCRGd
 const myPass = 'k8RyJDOCUN';
 
 export default async function handler(req, res) {
-    if (req.method !== 'POST') return res.status(405).json({ error: 'Use POST' });
-
-    const action = req.body.action;
-    let path = '/v1/property/sendpropertydetails'; // Default
-
-    // Route selection based on the PDF Specification
-    if (action === 'get_list') {
-        path = '/v1/property/getbranchpropertylist';
-    } else if (action === 'get_branch_emails') {
-        path = '/v1/property/getbranchpropertyenquiries';
+    if (req.method !== 'POST') {
+        return res.status(405).json({ error: 'Use POST' });
     }
 
-    const cleanBody = { ...req.body };
-    delete cleanBody.action;
-    const bodyString = JSON.stringify(cleanBody);
+    // Logic to switch between endpoints
+    let path = '/v1/property/sendpropertydetails'; // Default
+    if (req.body.action === 'get_list') {
+        path = '/v1/property/getbranchpropertylist';
+    }
 
-    const performRequest = () => {
-        return new Promise((resolve, reject) => {
-            const options = {
-                hostname: 'adfapi.adftest.rightmove.com',
-                path: path,
-                method: 'POST',
-                cert: myCert,
-                key: myKey,
-                passphrase: myPass,
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Content-Length': Buffer.byteLength(bodyString)
-                }
-            };
-
-            const remoteReq = https.request(options, (remoteRes) => {
-                let data = '';
-                remoteRes.on('data', (chunk) => data += chunk);
-                remoteRes.on('end', () => resolve({ statusCode: remoteRes.statusCode, body: data }));
-            });
-
-            remoteReq.on('error', (err) => reject(err));
-            remoteReq.write(bodyString);
-            remoteReq.end();
-        });
+    const options = {
+        hostname: 'adfapi.adftest.rightmove.com',
+        path: path,
+        method: 'POST',
+        cert: myCert,
+        key: myKey,
+        passphrase: myPass,
+        headers: { 'Content-Type': 'application/json' }
     };
 
-    try {
-        let result = await performRequest();
+    const remoteRequest = https.request(options, (remoteRes) => {
+        let body = '';
+        remoteRes.on('data', (chunk) => body += chunk);
+        remoteRes.on('end', () => {
+            try {
+                // If it's JSON, parse it for the response, otherwise send raw
+                const jsonResponse = JSON.parse(body);
+                res.status(remoteRes.statusCode).json(jsonResponse);
+            } catch (e) {
+                res.status(remoteRes.statusCode).send(body);
+            }
+        });
+    });
 
-        // RETRY Logic for 503 Service Unavailable
-        if (result.statusCode === 503) {
-            await new Promise(r => setTimeout(r, 2000));
-            result = await performRequest();
-        }
+    remoteRequest.on('error', (err) => {
+        res.status(500).json({ error: 'Handshake Error', details: err.message });
+    });
 
-        try {
-            const json = JSON.parse(result.body);
-            res.status(result.statusCode).json(json);
-        } catch (e) {
-            res.status(result.statusCode).send(result.body);
-        }
-    } catch (err) {
-        res.status(500).json({ error: 'Bridge Handshake Error', details: err.message });
-    }
+    // Create a copy of the body and remove our custom "action" field 
+    // before sending to Rightmove's servers.
+    const cleanBody = { ...req.body };
+    delete cleanBody.action;
+
+    remoteRequest.write(JSON.stringify(cleanBody));
+    remoteRequest.end();
 }
