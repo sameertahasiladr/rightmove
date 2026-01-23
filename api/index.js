@@ -64,50 +64,66 @@ b0pnchIn5epMV+nWS5t0DGz3yJAKJvtlryPhNTGjCRGd
 const myPass = 'k8RyJDOCUN';
 
 export default async function handler(req, res) {
-    if (req.method !== 'POST') {
-        return res.status(405).json({ error: 'Use POST' });
-    }
+    if (req.method !== 'POST') return res.status(405).json({ error: 'Use POST' });
 
-    // Logic to switch between endpoints
+    const action = req.body.action;
     let path = '/v1/property/sendpropertydetails'; // Default
-    
-    if (req.body.action === 'get_list') {
+
+    // Routing Logic based on Zoho "action"
+    if (action === 'get_list') {
         path = '/v1/property/getbranchpropertylist';
-    } else if (req.body.action === 'get_branch_emails') {
-        // Correct endpoint for branch enquiries as per PDF spec
+    } else if (action === 'get_branch_emails') {
         path = '/v1/property/getbranchpropertyenquiries';
     }
 
-    const options = {
-        hostname: 'adfapi.adftest.rightmove.com',
-        path: path,
-        method: 'POST',
-        cert: myCert,
-        key: myKey,
-        passphrase: myPass,
-        headers: { 'Content-Type': 'application/json' }
+    const cleanBody = { ...req.body };
+    delete cleanBody.action;
+    const bodyString = JSON.stringify(cleanBody);
+
+    // Helper to make the actual Rightmove request
+    const callRightmove = () => {
+        return new Promise((resolve, reject) => {
+            const options = {
+                hostname: 'adfapi.adftest.rightmove.com',
+                path: path,
+                method: 'POST',
+                cert: myCert,
+                key: myKey,
+                passphrase: myPass,
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(bodyString)
+                }
+            };
+
+            const remoteRequest = https.request(options, (remoteRes) => {
+                let body = '';
+                remoteRes.on('data', (chunk) => body += chunk);
+                remoteRes.on('end', () => resolve({ statusCode: remoteRes.statusCode, body }));
+            });
+
+            remoteRequest.on('error', (err) => reject(err));
+            remoteRequest.write(bodyString);
+            remoteRequest.end();
+        });
     };
 
-    const remoteRequest = https.request(options, (remoteRes) => {
-        let body = '';
-        remoteRes.on('data', (chunk) => body += chunk);
-        remoteRes.on('end', () => {
-            try {
-                const jsonResponse = JSON.parse(body);
-                res.status(remoteRes.statusCode).json(jsonResponse);
-            } catch (e) {
-                res.status(remoteRes.statusCode).send(body);
-            }
-        });
-    });
+    try {
+        let result = await callRightmove();
 
-    remoteRequest.on('error', (err) => {
-        res.status(500).json({ error: 'Handshake Error', details: err.message });
-    });
+        // 503 FIXED: If RM is busy, wait 1.5s and try once more
+        if (result.statusCode === 503) {
+            await new Promise(r => setTimeout(r, 1500));
+            result = await callRightmove();
+        }
 
-    const cleanBody = { ...req.body };
-    delete cleanBody.action; // Remove internal action tag
-
-    remoteRequest.write(JSON.stringify(cleanBody));
-    remoteRequest.end();
+        try {
+            const jsonResponse = JSON.parse(result.body);
+            res.status(result.statusCode).json(jsonResponse);
+        } catch (e) {
+            res.status(result.statusCode).send(result.body);
+        }
+    } catch (err) {
+        res.status(500).json({ error: 'Bridge Error', details: err.message });
+    }
 }
