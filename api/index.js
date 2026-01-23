@@ -70,8 +70,12 @@ export default async function handler(req, res) {
 
     // Logic to switch between endpoints
     let path = '/v1/property/sendpropertydetails'; // Default
+    
     if (req.body.action === 'get_list') {
         path = '/v1/property/getbranchpropertylist';
+    } else if (req.body.action === 'get_branch_emails') {
+        // Correct endpoint for branch enquiries as per PDF spec
+        path = '/v1/property/getbranchpropertyenquiries';
     }
 
     const options = {
@@ -89,7 +93,6 @@ export default async function handler(req, res) {
         remoteRes.on('data', (chunk) => body += chunk);
         remoteRes.on('end', () => {
             try {
-                // If it's JSON, parse it for the response, otherwise send raw
                 const jsonResponse = JSON.parse(body);
                 res.status(remoteRes.statusCode).json(jsonResponse);
             } catch (e) {
@@ -102,10 +105,8 @@ export default async function handler(req, res) {
         res.status(500).json({ error: 'Handshake Error', details: err.message });
     });
 
-    // Create a copy of the body and remove our custom "action" field 
-    // before sending to Rightmove's servers.
     const cleanBody = { ...req.body };
-    delete cleanBody.action;
+    delete cleanBody.action; // Remove internal action tag
 
     remoteRequest.write(JSON.stringify(cleanBody));
     remoteRequest.end();
