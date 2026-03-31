@@ -1,6 +1,6 @@
 const https = require('https');
 
-// --- YOUR AUTHENTICATION DATA ---
+// ---  AUTHENTICATION DATA ---
 const myCert = `-----BEGIN CERTIFICATE-----
 MIIExDCCA6ygAwIBAgICAtEwDQYJKoZIhvcNAQELBQAwgaMxCzAJBgNVBAYTAkdC
 MQ8wDQYDVQQIDAZMb25kb24xDTALBgNVBAcMBFNvaG8xEjAQBgNVBAoMCVJpZ2h0
@@ -89,7 +89,7 @@ export default async function handler(req, res) {
         remoteRes.on('data', (chunk) => body += chunk);
         remoteRes.on('end', () => {
             try {
-                // If it's JSON, parse it for the response, otherwise send raw
+               
                 const jsonResponse = JSON.parse(body);
                 res.status(remoteRes.statusCode).json(jsonResponse);
             } catch (e) {
@@ -102,8 +102,7 @@ export default async function handler(req, res) {
         res.status(500).json({ error: 'Handshake Error', details: err.message });
     });
 
-    // Create a copy of the body and remove our custom "action" field 
-    // before sending to Rightmove's servers.
+   
     const cleanBody = { ...req.body };
     delete cleanBody.action;
 
